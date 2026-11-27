@@ -1,3 +1,22 @@
+diff --git a/CMakeLists.txt b/CMakeLists.txt
+index 65ed590..fb0c26a 100644
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -106,6 +106,14 @@ target_link_libraries(
+   PUBLIC ${COMMON_LIB_NAME} depthai_v3::core depthai_bridge_v3::depthai_bridge_v3
+   rclcpp::rclcpp ${vision_msgs_TARGETS})
+ 
++if(APPLE)
++  # The sensor and NN libraries reference each other's symbols (resolved when
++  # both are loaded by ${PROJECT_NAME}); macOS rejects undefined symbols in
++  # shared libraries by default.
++  target_link_options(${SENSOR_LIB_NAME} PRIVATE "LINKER:-undefined,dynamic_lookup")
++  target_link_options(${NN_LIB_NAME} PRIVATE "LINKER:-undefined,dynamic_lookup")
++endif()
++
+ add_library(
+   ${PROJECT_NAME} SHARED
+   src/driver.cpp src/pipeline/pipeline_generator.cpp
 diff --git a/src/dai_nodes/sensors/vio.cpp b/src/dai_nodes/sensors/vio.cpp
 index 0374a5c..553e316 100644
 --- a/src/dai_nodes/sensors/vio.cpp
