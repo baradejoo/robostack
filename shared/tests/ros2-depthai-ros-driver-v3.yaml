@@ -1,0 +1,6 @@
+tests:
+  # Smoke test without a camera: `depthai_ros_driver_v3/driver_node` starts (loads the driver's libraries, depthai and the RMW; on macOS the sensor and NN libraries resolve each other's symbols at load time) and is still running after 5 s, searching for a device. It's stopped (killed if SIGTERM doesn't end it) before the test exits, or the test runner waits for it.
+  - if: unix
+    then:
+      script:
+        - python -c "import os, subprocess, sys, time; p = subprocess.Popen([os.path.join(os.environ['PREFIX'], 'lib', 'depthai_ros_driver_v3', 'driver_node')]); time.sleep(5); r = p.poll(); p.terminate(); time.sleep(3); p.kill(); p.wait(); sys.exit(0 if r is None else 1)"
