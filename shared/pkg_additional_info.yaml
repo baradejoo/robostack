@@ -37,6 +37,11 @@ data_tamer_cpp:  # Remove once https://github.com/PickNikRobotics/data_tamer/pul
   additional_cmake_args: "-DCMAKE_WINDOWS_EXPORT_ALL_SYMBOLS=ON"
 depthai:
   additional_cmake_args: '-DCMAKE_POLICY_VERSION_MINIMUM=3.5'
+depthai_v3:
+  # conda-forge dependencies instead of depthai's own vcpkg bootstrap. Basalt (VIO), the
+  # prebuilt dynamic calibration library and mp4v2 (recording) aren't on conda-forge; cpr
+  # (curl: log upload, events manager) only for linux-64, and depthai 2 has it off too.
+  additional_cmake_args: "-DDEPTHAI_BOOTSTRAP_VCPKG=OFF -DDEPTHAI_VCPKG_INTERNAL_ONLY=OFF -DDEPTHAI_LIBNOP_EXTERNAL=OFF -DDEPTHAI_BASALT_SUPPORT=OFF -DDEPTHAI_DYNAMIC_CALIBRATION_SUPPORT=OFF -DDEPTHAI_ENABLE_MP4V2=OFF -DDEPTHAI_ENABLE_CURL=OFF -DDEPTHAI_CLANG_FORMAT=OFF"
 diagnostic_aggregator:
   additional_cmake_args: "-DCMAKE_WINDOWS_EXPORT_ALL_SYMBOLS=ON"
 diagnostic_updater:

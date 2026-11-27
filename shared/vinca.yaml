@@ -562,6 +562,7 @@ packages_select_by_deps:
       - bonxai_ros
       - cloudini_lib
       - cloudini_ros
+      - depthai_ros_v3  # depthai-core 3: Windows not tried
       - dual_laser_merger
       - event_camera_codecs # uses endian.h, unix-only; issue #228
       - event_camera_renderer # doesn't support Windows shared library

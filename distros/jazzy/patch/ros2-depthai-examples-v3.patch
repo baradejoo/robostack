@@ -1,0 +1,26 @@
+diff --git a/CMakeLists.txt b/CMakeLists.txt
+index 6e44ae4..d50d542 100644
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -64,7 +64,12 @@ add_example(detection_publisher src/detection_publisher.cpp)
+ add_example(thermal_publisher src/thermal_publisher.cpp)
+ add_example(tof_publisher src/tof_publisher.cpp)
+ add_example(tof_rgbd src/tof_rgbd.cpp)
+-add_example(odom_publisher src/odom_publisher.cpp)
++# odom_publisher needs depthai's Basalt VIO node, which is optional in depthai
++get_target_property(_depthai_definitions depthai_v3::core INTERFACE_COMPILE_DEFINITIONS)
++if("DEPTHAI_HAVE_BASALT_SUPPORT" IN_LIST _depthai_definitions)
++  add_example(odom_publisher src/odom_publisher.cpp)
++  install(TARGETS odom_publisher DESTINATION lib/${PROJECT_NAME})
++endif()
+ # add_example(slam src/slam.cpp)
+ 
+ install(
+@@ -81,7 +86,6 @@ install(
+           tof_publisher
+           tof_rgbd
+           thermal_publisher
+-          odom_publisher
+           # slam
+   DESTINATION lib/${PROJECT_NAME})
+ 

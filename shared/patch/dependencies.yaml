@@ -13,6 +13,10 @@ cuda_buffer:
   add_host: ["cuda-driver-dev", "cuda-nvcc"]
 cuda_buffer_backend:
   add_host: ["cuda-driver-dev", "cuda-nvcc"]
+depthai_v3:
+  # xtensor: in depthai's public headers. Boost: asio, for the websocketpp fork it fetches.
+  add_host: ["apriltag", "backward-cpp", "bzip2", "cpp-httplib", "eigen", "libarchive", "libboost-devel", "liblzma-devel", "libprotobuf", "lz4-c", "magic_enum", "openssl", "xtensor", "xtl", "yaml-cpp"]
+  add_run: ["xtensor", "xtl"]
 dolly_ignition:
   add_host: ["${{ 'libgl-devel' if linux }}", "${{ 'libopengl-devel' if linux }}"]
 fmilibrary_vendor:

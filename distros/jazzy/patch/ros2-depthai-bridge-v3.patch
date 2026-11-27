@@ -1,0 +1,121 @@
+diff --git a/CMakeLists.txt b/CMakeLists.txt
+index f95a840..f213bce 100644
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -67,6 +67,14 @@ file(
+ 
+ add_library(${PROJECT_NAME} SHARED ${LIB_SRC})
+ 
++find_package(OpenCV REQUIRED)
++if(OpenCV_VERSION_MAJOR GREATER 4)
++  # calib3d was split into "calib" + "geometry" in OpenCV 5.
++  set(DEPTHAI_BRIDGE_OPENCV_CALIB_LIBS opencv_calib opencv_geometry)
++else()
++  set(DEPTHAI_BRIDGE_OPENCV_CALIB_LIBS opencv_calib3d)
++endif()
++
+ target_link_libraries(
+   ${PROJECT_NAME}
+   PUBLIC
+@@ -91,7 +99,7 @@ target_link_libraries(
+   depthai_v3::core
+   opencv_imgproc
+   opencv_highgui
+-  opencv_calib3d)
++  ${DEPTHAI_BRIDGE_OPENCV_CALIB_LIBS})
+ 
+ ament_export_targets(${PROJECT_NAME}Targets HAS_LIBRARY_TARGET)
+ 
+diff --git a/include/depthai_bridge/ImuConverter.hpp b/include/depthai_bridge/ImuConverter.hpp
+index f007a32..e3be5e1 100644
+--- a/include/depthai_bridge/ImuConverter.hpp
++++ b/include/depthai_bridge/ImuConverter.hpp
+@@ -137,7 +137,7 @@ class ImuConverter : public BaseConverter {
+     void fillImuMsg(depthai_ros_msgs_v3::msg::ImuWithMagneticField& msg, dai::IMUReportMagneticField report);
+ 
+     template <typename I, typename S, typename T, typename F, typename M>
+-    void CreateUnitMessage(M& msg, std::chrono::_V2::steady_clock::time_point timestamp, I first, S second, T third, F fourth) {
++    void CreateUnitMessage(M& msg, std::chrono::steady_clock::time_point timestamp, I first, S second, T third, F fourth) {
+         fillImuMsg(msg, first);
+         fillImuMsg(msg, second);
+         fillImuMsg(msg, third);
+@@ -149,7 +149,7 @@ class ImuConverter : public BaseConverter {
+     }
+ 
+     template <typename I, typename S, typename T, typename M>
+-    void CreateUnitMessage(M& msg, std::chrono::_V2::steady_clock::time_point timestamp, I first, S second, T third) {
++    void CreateUnitMessage(M& msg, std::chrono::steady_clock::time_point timestamp, I first, S second, T third) {
+         fillImuMsg(msg, first);
+         fillImuMsg(msg, second);
+         fillImuMsg(msg, third);
+@@ -160,7 +160,7 @@ class ImuConverter : public BaseConverter {
+     }
+ 
+     template <typename I, typename S, typename M>
+-    void CreateUnitMessage(M& msg, std::chrono::_V2::steady_clock::time_point timestamp, I first, S second) {
++    void CreateUnitMessage(M& msg, std::chrono::steady_clock::time_point timestamp, I first, S second) {
+         fillImuMsg(msg, first);
+         fillImuMsg(msg, second);
+ 
+@@ -192,7 +192,7 @@ class ImuConverter : public BaseConverter {
+                         const double alpha = diff.count() / dt;
+                         I interp = lerpImu(interp0, interp1, alpha);
+                         M msg;
+-                        std::chrono::_V2::steady_clock::time_point tstamp;
++                        std::chrono::steady_clock::time_point tstamp;
+                         if(getBaseDeviceTimestamp)
+                             tstamp = currSecond.getTimestampDevice();
+                         else
+@@ -245,7 +245,7 @@ class ImuConverter : public BaseConverter {
+                         const double alpha = diff.count() / dt;
+                         I interp = lerpImu(interp0, interp1, alpha);
+                         M msg;
+-                        std::chrono::_V2::steady_clock::time_point tstamp;
++                        std::chrono::steady_clock::time_point tstamp;
+                         if(getBaseDeviceTimestamp)
+                             tstamp = currSecond.getTimestampDevice();
+                         else
+@@ -302,7 +302,7 @@ class ImuConverter : public BaseConverter {
+                         const double alpha = diff.count() / dt;
+                         I interp = lerpImu(interp0, interp1, alpha);
+                         M msg;
+-                        std::chrono::_V2::steady_clock::time_point tstamp;
++                        std::chrono::steady_clock::time_point tstamp;
+                         if(getBaseDeviceTimestamp)
+                             tstamp = currSecond.getTimestampDevice();
+                         else
+diff --git a/src/BaseConverter.cpp b/src/BaseConverter.cpp
+index 3a0d211..0950544 100644
+--- a/src/BaseConverter.cpp
++++ b/src/BaseConverter.cpp
+@@ -28,7 +28,7 @@ std_msgs::msg::Header BaseConverter::getRosHeader(const std::shared_ptr<dai::Buf
+     }
+     std_msgs::msg::Header header;
+     header.frame_id = frameName;
+-    std::chrono::_V2::steady_clock::time_point tstamp;
++    std::chrono::steady_clock::time_point tstamp;
+     if(getBaseDeviceTimestamp)
+         if(addExpOffset) {
+             auto data = std::dynamic_pointer_cast<dai::ImgFrame>(inData);
+diff --git a/src/ImuConverter.cpp b/src/ImuConverter.cpp
+index fb15571..09c6a29 100644
+--- a/src/ImuConverter.cpp
++++ b/src/ImuConverter.cpp
+@@ -94,7 +94,7 @@ void ImuConverter::toRosMsg(std::shared_ptr<dai::IMUData> inData, std::deque<Imu
+             auto gyro = inData->packets[i].gyroscope;
+ 
+             ImuMsgs::Imu msg;
+-            std::chrono::_V2::steady_clock::time_point tstamp;
++            std::chrono::steady_clock::time_point tstamp;
+             if(getBaseDeviceTimestamp)
+                 tstamp = accel.getTimestampDevice();
+             else
+@@ -124,7 +124,7 @@ void ImuConverter::toRosDaiMsg(std::shared_ptr<dai::IMUData> inData, std::deque<
+             auto rot = inData->packets[i].rotationVector;
+             auto magn = inData->packets[i].magneticField;
+             depthai_ros_msgs_v3::msg::ImuWithMagneticField msg;
+-            std::chrono::_V2::steady_clock::time_point tstamp;
++            std::chrono::steady_clock::time_point tstamp;
+             if(getBaseDeviceTimestamp)
+                 tstamp = accel.getTimestampDevice();
+             else

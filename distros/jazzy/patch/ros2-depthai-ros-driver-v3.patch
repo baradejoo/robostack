@@ -1,0 +1,152 @@
+diff --git a/src/dai_nodes/sensors/vio.cpp b/src/dai_nodes/sensors/vio.cpp
+index 0374a5c..553e316 100644
+--- a/src/dai_nodes/sensors/vio.cpp
++++ b/src/dai_nodes/sensors/vio.cpp
+@@ -1,3 +1,5 @@
++// depthai's Basalt VIO node is optional (DEPTHAI_BASALT_SUPPORT)
++#ifdef DEPTHAI_HAVE_BASALT_SUPPORT
+ #include "depthai_ros_driver_v3/dai_nodes/sensors/vio.hpp"
+ 
+ #include "depthai/device/Device.hpp"
+@@ -150,3 +152,4 @@ dai::Node::Input& Vio::getInput(int linkType) {
+ 
+ }  // namespace dai_nodes
+ }  // namespace depthai_ros_driver
++#endif  // DEPTHAI_HAVE_BASALT_SUPPORT
+diff --git a/src/param_handlers/vio_param_handler.cpp b/src/param_handlers/vio_param_handler.cpp
+index 538a66c..3d87f1d 100644
+--- a/src/param_handlers/vio_param_handler.cpp
++++ b/src/param_handlers/vio_param_handler.cpp
+@@ -1,3 +1,5 @@
++// depthai's Basalt VIO node is optional (DEPTHAI_BASALT_SUPPORT)
++#ifdef DEPTHAI_HAVE_BASALT_SUPPORT
+ #include "depthai_ros_driver_v3/param_handlers/vio_param_handler.hpp"
+ 
+ #include <ament_index_cpp/get_package_share_directory.hpp>
+@@ -79,3 +81,4 @@ void VioParamHandler::declareParams(std::shared_ptr<dai::node::BasaltVIO> vio) {
+ 
+ }  // namespace param_handlers
+ }  // namespace depthai_ros_driver
++#endif  // DEPTHAI_HAVE_BASALT_SUPPORT
+diff --git a/src/pipeline/base_types.cpp b/src/pipeline/base_types.cpp
+index 718a4fa..3f06e98 100644
+--- a/src/pipeline/base_types.cpp
++++ b/src/pipeline/base_types.cpp
+@@ -15,7 +15,9 @@
+ #include "depthai_ros_driver_v3/dai_nodes/sensors/stereo.hpp"
+ #include "depthai_ros_driver_v3/dai_nodes/sensors/thermal.hpp"
+ #include "depthai_ros_driver_v3/dai_nodes/sensors/tof.hpp"
++#ifdef DEPTHAI_HAVE_BASALT_SUPPORT
+ #include "depthai_ros_driver_v3/dai_nodes/sensors/vio.hpp"
++#endif
+ #include "depthai_ros_driver_v3/pipeline/base_pipeline.hpp"
+ #include "depthai_ros_driver_v3/utils.hpp"
+ #include "rclcpp/node.hpp"
+@@ -62,6 +64,7 @@ std::vector<std::unique_ptr<dai_nodes::BaseNode>> RGBD::createPipeline(std::shar
+     addRgbdNode(daiNodes, node, device, pipeline, ph, rsCompat, *rgb, *stereo);
+     if(checkForImu(ph, device, node->get_logger())) {
+         auto imu = std::make_unique<dai_nodes::Imu>("imu", node, pipeline, device, rsCompat);
++#ifdef DEPTHAI_HAVE_BASALT_SUPPORT
+         if(ph->getParam<bool>("i_enable_vio")) {
+             auto vio = std::make_unique<dai_nodes::Vio>("vio", node, pipeline, device, rsCompat, *stereo, *imu);
+             // if(ph->getParam<bool>("i_enable_slam")) {
+@@ -79,6 +82,11 @@ std::vector<std::unique_ptr<dai_nodes::BaseNode>> RGBD::createPipeline(std::shar
+             // }
+             daiNodes.push_back(std::move(vio));
+         }
++#else
++        if(ph->getParam<bool>("i_enable_vio")) {
++            RCLCPP_WARN(node->get_logger(), "i_enable_vio is set, but depthai was built without Basalt support: VIO is not available.");
++        }
++#endif
+         daiNodes.push_back(std::move(imu));
+     }
+ 
+@@ -104,10 +112,16 @@ std::vector<std::unique_ptr<dai_nodes::BaseNode>> RGBStereo::createPipeline(std:
+     addNnNode(daiNodes, node, pipeline, deviceName, rsCompat, *rgb, nnType);
+     if(checkForImu(ph, device, node->get_logger())) {
+         auto imu = std::make_unique<dai_nodes::Imu>("imu", node, pipeline, device, rsCompat);
++#ifdef DEPTHAI_HAVE_BASALT_SUPPORT
+         if(ph->getParam<bool>("i_enable_vio")) {
+             auto vio = std::make_unique<dai_nodes::Vio>("vio", node, pipeline, device, rsCompat, *left, *right, *imu);
+             daiNodes.push_back(std::move(vio));
+         }
++#else
++        if(ph->getParam<bool>("i_enable_vio")) {
++            RCLCPP_WARN(node->get_logger(), "i_enable_vio is set, but depthai was built without Basalt support: VIO is not available.");
++        }
++#endif
+         daiNodes.push_back(std::move(imu));
+     }
+     daiNodes.push_back(std::move(rgb));
+@@ -130,10 +144,16 @@ std::vector<std::unique_ptr<dai_nodes::BaseNode>> Stereo::createPipeline(std::sh
+         std::make_unique<dai_nodes::SensorWrapper>(getNodeName(node, NodeNameEnum::Right), node, pipeline, deviceName, rsCompat, dai::CameraBoardSocket::CAM_C);
+     if(checkForImu(ph, device, node->get_logger())) {
+         auto imu = std::make_unique<dai_nodes::Imu>("imu", node, pipeline, device, rsCompat);
++#ifdef DEPTHAI_HAVE_BASALT_SUPPORT
+         if(ph->getParam<bool>("i_enable_vio")) {
+             auto vio = std::make_unique<dai_nodes::Vio>("vio", node, pipeline, device, rsCompat, *left, *right, *imu);
+             daiNodes.push_back(std::move(vio));
+         }
++#else
++        if(ph->getParam<bool>("i_enable_vio")) {
++            RCLCPP_WARN(node->get_logger(), "i_enable_vio is set, but depthai was built without Basalt support: VIO is not available.");
++        }
++#endif
+         daiNodes.push_back(std::move(imu));
+     }
+     daiNodes.push_back(std::move(left));
+@@ -152,6 +172,7 @@ std::vector<std::unique_ptr<dai_nodes::BaseNode>> Depth::createPipeline(std::sha
+     auto stereo = std::make_unique<dai_nodes::Stereo>(getNodeName(node, NodeNameEnum::Stereo), node, pipeline, device, rsCompat);
+     if(checkForImu(ph, device, node->get_logger())) {
+         auto imu = std::make_unique<dai_nodes::Imu>("imu", node, pipeline, device, rsCompat);
++#ifdef DEPTHAI_HAVE_BASALT_SUPPORT
+         if(ph->getParam<bool>("i_enable_vio")) {
+             auto vio = std::make_unique<dai_nodes::Vio>("vio", node, pipeline, device, rsCompat, *stereo, *imu);
+             // if(ph->getParam<bool>("i_enable_slam")) {
+@@ -168,6 +189,11 @@ std::vector<std::unique_ptr<dai_nodes::BaseNode>> Depth::createPipeline(std::sha
+             // }
+             daiNodes.push_back(std::move(vio));
+         }
++#else
++        if(ph->getParam<bool>("i_enable_vio")) {
++            RCLCPP_WARN(node->get_logger(), "i_enable_vio is set, but depthai was built without Basalt support: VIO is not available.");
++        }
++#endif
+         daiNodes.push_back(std::move(imu));
+     }
+     daiNodes.push_back(std::move(stereo));
+@@ -220,10 +246,16 @@ std::vector<std::unique_ptr<dai_nodes::BaseNode>> DepthToF::createPipeline(std::
+ 
+     if(checkForImu(ph, device, node->get_logger())) {
+         auto imu = std::make_unique<dai_nodes::Imu>("imu", node, pipeline, device, rsCompat);
++#ifdef DEPTHAI_HAVE_BASALT_SUPPORT
+         if(ph->getParam<bool>("i_enable_vio")) {
+             auto vio = std::make_unique<dai_nodes::Vio>("vio", node, pipeline, device, rsCompat, *stereo, *imu);
+             daiNodes.push_back(std::move(vio));
+         }
++#else
++        if(ph->getParam<bool>("i_enable_vio")) {
++            RCLCPP_WARN(node->get_logger(), "i_enable_vio is set, but depthai was built without Basalt support: VIO is not available.");
++        }
++#endif
+         daiNodes.push_back(std::move(imu));
+     }
+     daiNodes.push_back(std::move(tof));
+@@ -248,10 +280,16 @@ std::vector<std::unique_ptr<dai_nodes::BaseNode>> StereoToF::createPipeline(std:
+     }
+     if(checkForImu(ph, device, node->get_logger())) {
+         auto imu = std::make_unique<dai_nodes::Imu>("imu", node, pipeline, device, rsCompat);
++#ifdef DEPTHAI_HAVE_BASALT_SUPPORT
+         if(ph->getParam<bool>("i_enable_vio")) {
+             auto vio = std::make_unique<dai_nodes::Vio>("vio", node, pipeline, device, rsCompat, *left, *right, *imu);
+             daiNodes.push_back(std::move(vio));
+         }
++#else
++        if(ph->getParam<bool>("i_enable_vio")) {
++            RCLCPP_WARN(node->get_logger(), "i_enable_vio is set, but depthai was built without Basalt support: VIO is not available.");
++        }
++#endif
+         daiNodes.push_back(std::move(imu));
+     }
+     daiNodes.push_back(std::move(left));

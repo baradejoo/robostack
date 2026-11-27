@@ -1,0 +1,302 @@
+diff --git a/CMakeLists.txt b/CMakeLists.txt
+index 2390c1c..63ce078 100644
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -208,7 +208,12 @@ set(THIRDPARTY_OPENCV_LIBRARIES "" CACHE STRING "Optional libraries to link Open
+ set(TARGET_OPENCV_NAME ${PROJECT_NAME}-opencv)
+ set(TARGET_OPENCV_ALIAS opencv)
+ if(DEPTHAI_OPENCV_SUPPORT)
+-    set(REQUIRED_OPENCV_LIBRARIES "opencv_core" "opencv_imgproc" "opencv_videoio" "opencv_highgui" "opencv_calib3d" "opencv_features2d")
++    if(OpenCV_VERSION_MAJOR GREATER 4)
++        # OpenCV 5 split calib3d into calib + geometry + stereo and renamed features2d
++        set(REQUIRED_OPENCV_LIBRARIES "opencv_core" "opencv_imgproc" "opencv_videoio" "opencv_highgui" "opencv_calib" "opencv_geometry" "opencv_stereo" "opencv_features")
++    else()
++        set(REQUIRED_OPENCV_LIBRARIES "opencv_core" "opencv_imgproc" "opencv_videoio" "opencv_highgui" "opencv_calib3d" "opencv_features2d")
++    endif()
+     set(OPENCV_SUPPORT_AVAILABLE ${OpenCV_FOUND})
+     foreach(lib ${REQUIRED_OPENCV_LIBRARIES})
+         if(NOT (lib IN_LIST OpenCV_LIBS))
+diff --git a/cmake/depthaiConfig.cmake.in b/cmake/depthaiConfig.cmake.in
+index 311ae45..5bdcdc9 100644
+--- a/cmake/depthaiConfig.cmake.in
++++ b/cmake/depthaiConfig.cmake.in
+@@ -11,7 +11,7 @@ set(DEPTHAI_DYNAMIC_CALIBRATION_SUPPORT @DEPTHAI_DYNAMIC_CALIBRATION_SUPPORT@)
+ set(DEPTHAI_BUILD_BETA @DEPTHAI_BUILD_BETA@)
+ 
+ if(DEPTHAI_OPENCV_SUPPORT)
+-    find_dependency(OpenCV 4 CONFIG REQUIRED)
++    find_dependency(OpenCV CONFIG REQUIRED)
+ endif()
+ 
+ if(DEPTHAI_PCL_SUPPORT)
+diff --git a/cmake/depthaiDependencies.cmake b/cmake/depthaiDependencies.cmake
+index 86a17fe..3acc116 100644
+--- a/cmake/depthaiDependencies.cmake
++++ b/cmake/depthaiDependencies.cmake
+@@ -38,16 +38,40 @@ if(NOT CONFIG_MODE OR (CONFIG_MODE AND NOT DEPTHAI_SHARED_LIBS))
+     # BZip2 (for bspatch)
+     find_package(BZip2 ${_QUIET}  REQUIRED)
+ 
+-    find_package(lz4 CONFIG REQUIRED)
+-    # FP16 for conversions
++    # conda-forge's lz4-c has no CMake package, only liblz4.pc
++    find_package(lz4 CONFIG QUIET)
++    if(NOT TARGET lz4::lz4)
++        find_package(PkgConfig REQUIRED)
++        pkg_check_modules(liblz4 REQUIRED IMPORTED_TARGET liblz4)
++        add_library(lz4::lz4 INTERFACE IMPORTED)
++        target_link_libraries(lz4::lz4 INTERFACE PkgConfig::liblz4)
++    endif()
++    # FP16 for conversions (header-only, not on conda-forge; only used in source files)
+     find_path(FP16_INCLUDE_DIR NAMES fp16.h)
++    if(NOT FP16_INCLUDE_DIR)
++        FetchContent_Declare(
++            fp16
++            GIT_REPOSITORY https://github.com/Maratyszcza/FP16.git
++            GIT_TAG        0a92994d729ff76a58f692d3028ca1b64b145d91
++            SOURCE_SUBDIR  _headers_only
++        )
++        FetchContent_MakeAvailable(fp16)
++        set(FP16_INCLUDE_DIR "${fp16_SOURCE_DIR}/include" CACHE PATH "" FORCE)
++    endif()
++    include_directories(SYSTEM "${FP16_INCLUDE_DIR}")
+ 
+     if(DEPTHAI_ENABLE_KOMPUTE)
+         find_package(kompute ${_QUIET} CONFIG REQUIRED)
+     endif()
+     # libarchive for firmware packages
+     find_package(LibArchive ${_QUIET}  REQUIRED)
+-    find_package(liblzma ${_QUIET} CONFIG REQUIRED)
++    # conda-forge's liblzma has no CMake package: CMake's own module finds it
++    find_package(liblzma QUIET CONFIG)
++    if(NOT TARGET liblzma::liblzma)
++        find_package(LibLZMA REQUIRED)
++        add_library(liblzma::liblzma INTERFACE IMPORTED)
++        target_link_libraries(liblzma::liblzma INTERFACE LibLZMA::LibLZMA)
++    endif()
+     # httplib for Gate communication
+     find_package(httplib ${_QUIET} CONFIG REQUIRED)
+     find_package(Eigen3 ${_QUIET} CONFIG REQUIRED)
+@@ -84,7 +108,19 @@ if(NOT CONFIG_MODE OR (CONFIG_MODE AND NOT DEPTHAI_SHARED_LIBS))
+         unset(STACK_DETAILS_AUTO_DETECT)
+     endif()
+     find_package(yaml-cpp ${_QUIET} CONFIG REQUIRED)
+-    find_package(semver ${_QUIET} CONFIG REQUIRED)
++    # Neargye's semver (header-only, not on conda-forge; only used in source files)
++    find_package(semver QUIET CONFIG)
++    if(NOT TARGET semver::semver)
++        FetchContent_Declare(
++            semver
++            GIT_REPOSITORY https://github.com/Neargye/semver.git
++            GIT_TAG        v0.3.1
++            SOURCE_SUBDIR  _headers_only
++        )
++        FetchContent_MakeAvailable(semver)
++        add_library(semver::semver INTERFACE IMPORTED)
++        target_include_directories(semver::semver INTERFACE "${semver_SOURCE_DIR}/include")
++    endif()
+     if(DEPTHAI_HAS_APRIL_TAG)
+         find_package(apriltag ${_QUIET} CONFIG REQUIRED)
+     endif()
+@@ -119,6 +155,20 @@ endif()
+ 
+ if(DEPTHAI_ENABLE_REMOTE_CONNECTION)
+     get_filename_component(PARENT_DIRECTORY ${CMAKE_CURRENT_LIST_DIR}/.. ABSOLUTE)
++    # foxglove-websocket needs Luxonis' websocketpp fork (get_send_queue_size), as in
++    # cmake/ports/websocketpp; header-only and only used in source files
++    FetchContent_Declare(
++        websocketpp
++        GIT_REPOSITORY https://github.com/luxonis/websocketpp.git
++        GIT_TAG        cebc62c393f07e664121f9b801ee7e8a1b273cee
++        SOURCE_SUBDIR  _headers_only
++        OVERRIDE_FIND_PACKAGE
++    )
++    FetchContent_MakeAvailable(websocketpp)
++    find_package(Boost REQUIRED)
++    add_library(websocketpp::websocketpp INTERFACE IMPORTED)
++    target_include_directories(websocketpp::websocketpp SYSTEM INTERFACE "${websocketpp_SOURCE_DIR}")
++    target_link_libraries(websocketpp::websocketpp INTERFACE Boost::headers)
+     add_subdirectory("${PARENT_DIRECTORY}/3rdparty/foxglove/ws-protocol/cpp/foxglove-websocket" foxglove-websocket)
+ endif()
+ 
+@@ -204,7 +254,7 @@ list(APPEND targets_to_export XLinkPublic)
+ # OpenCV 4 - (optional)
+ message("DEPTHAI_OPENCV_SUPPORT: ${DEPTHAI_OPENCV_SUPPORT}")
+ if(DEPTHAI_OPENCV_SUPPORT)
+-    find_package(OpenCV 4 ${_QUIET} CONFIG REQUIRED)
++    find_package(OpenCV ${_QUIET} CONFIG REQUIRED)
+ endif()
+ 
+ if(DEPTHAI_PCL_SUPPORT AND NOT TARGET JsonCpp::JsonCpp)
+diff --git a/include/depthai/pipeline/datatype/ImgDetections.hpp b/include/depthai/pipeline/datatype/ImgDetections.hpp
+index c0a431b..dac5943 100644
+--- a/include/depthai/pipeline/datatype/ImgDetections.hpp
++++ b/include/depthai/pipeline/datatype/ImgDetections.hpp
+@@ -16,11 +16,31 @@
+ #include "depthai/utility/ProtoSerializable.hpp"
+ 
+ #ifdef DEPTHAI_XTENSOR_SUPPORT
+-    #include <xtensor/containers/xadapt.hpp>
+-    #include <xtensor/containers/xbuffer_adaptor.hpp>
+-    #include <xtensor/core/xlayout.hpp>
+-    #include <xtensor/core/xmath.hpp>
+-    #include <xtensor/core/xtensor_forward.hpp>
++    #if __has_include(<xtensor/containers/xadapt.hpp>)
++        #include <xtensor/containers/xadapt.hpp>
++    #else  // xtensor < 0.26
++        #include <xtensor/xadapt.hpp>
++    #endif
++    #if __has_include(<xtensor/containers/xbuffer_adaptor.hpp>)
++        #include <xtensor/containers/xbuffer_adaptor.hpp>
++    #else  // xtensor < 0.26
++        #include <xtensor/xbuffer_adaptor.hpp>
++    #endif
++    #if __has_include(<xtensor/core/xlayout.hpp>)
++        #include <xtensor/core/xlayout.hpp>
++    #else  // xtensor < 0.26
++        #include <xtensor/xlayout.hpp>
++    #endif
++    #if __has_include(<xtensor/core/xmath.hpp>)
++        #include <xtensor/core/xmath.hpp>
++    #else  // xtensor < 0.26
++        #include <xtensor/xmath.hpp>
++    #endif
++    #if __has_include(<xtensor/core/xtensor_forward.hpp>)
++        #include <xtensor/core/xtensor_forward.hpp>
++    #else  // xtensor < 0.26
++        #include <xtensor/xtensor_forward.hpp>
++    #endif
+ #endif
+ 
+ #ifdef DEPTHAI_HAVE_OPENCV_SUPPORT
+diff --git a/include/depthai/pipeline/datatype/NNData.hpp b/include/depthai/pipeline/datatype/NNData.hpp
+index 06a3da8..c8f33c5 100644
+--- a/include/depthai/pipeline/datatype/NNData.hpp
++++ b/include/depthai/pipeline/datatype/NNData.hpp
+@@ -34,9 +34,21 @@
+     #undef ON
+ #endif
+ #ifdef DEPTHAI_XTENSOR_SUPPORT
+-    #include "xtensor/containers/xadapt.hpp"
+-    #include "xtensor/containers/xarray.hpp"
+-    #include "xtensor/misc/xmanipulation.hpp"
++    #if __has_include(<xtensor/containers/xadapt.hpp>)
++        #include <xtensor/containers/xadapt.hpp>
++    #else  // xtensor < 0.26
++        #include <xtensor/xadapt.hpp>
++    #endif
++    #if __has_include(<xtensor/containers/xarray.hpp>)
++        #include <xtensor/containers/xarray.hpp>
++    #else  // xtensor < 0.26
++        #include <xtensor/xarray.hpp>
++    #endif
++    #if __has_include(<xtensor/misc/xmanipulation.hpp>)
++        #include <xtensor/misc/xmanipulation.hpp>
++    #else  // xtensor < 0.26
++        #include <xtensor/xmanipulation.hpp>
++    #endif
+ #endif
+ #if defined(_ON_DEF)
+     #define ON _ON_DEF
+diff --git a/src/beta/utilities/PPText/PPTextUtils.cpp b/src/beta/utilities/PPText/PPTextUtils.cpp
+index 97efb01..b26bfa6 100644
+--- a/src/beta/utilities/PPText/PPTextUtils.cpp
++++ b/src/beta/utilities/PPText/PPTextUtils.cpp
+@@ -14,6 +14,9 @@
+     #include <numeric>
+     #include <opencv2/core.hpp>
+     #include <opencv2/imgproc.hpp>
++    #if __has_include(<opencv2/geometry.hpp>)  // OpenCV 5: minAreaRect, boundingRect, contourArea
++        #include <opencv2/geometry.hpp>
++    #endif
+     #include <utility>
+     #include <vector>
+ #endif
+diff --git a/src/device/DeviceGate.cpp b/src/device/DeviceGate.cpp
+index ea44d30..31ef719 100644
+--- a/src/device/DeviceGate.cpp
++++ b/src/device/DeviceGate.cpp
+@@ -265,7 +265,8 @@ bool DeviceGate::HTTPImpl::createSession(
+             }
+ 
+             // TODO(themarpe) - Inefficient
+-            httplib::MultipartFormDataItems items = {
++            // conda-forge's cpp-httplib: MultipartFormDataItems was renamed to UploadFormDataItems
++            httplib::UploadFormDataItems items = {
+                 {"file", std::string(package.begin(), package.end()), "depthai-device-kb-fwp.tar.xz", "application/octet-stream"},
+             };
+ 
+diff --git a/src/pipeline/datatype/SegmentationMask.cpp b/src/pipeline/datatype/SegmentationMask.cpp
+index f73b15a..a68d9b8 100644
+--- a/src/pipeline/datatype/SegmentationMask.cpp
++++ b/src/pipeline/datatype/SegmentationMask.cpp
+@@ -14,6 +14,9 @@
+ 
+ #ifdef DEPTHAI_HAVE_OPENCV_SUPPORT
+     #include "utility/ErrorMacros.hpp"
++    #if __has_include(<opencv2/geometry.hpp>)  // OpenCV 5: minAreaRect, boundingRect, contourArea
++        #include <opencv2/geometry.hpp>
++    #endif
+ #endif
+ 
+ #ifdef DEPTHAI_ENABLE_PROTOBUF
+diff --git a/src/pipeline/utilities/DetectionParser/DetectionParserUtils.cpp b/src/pipeline/utilities/DetectionParser/DetectionParserUtils.cpp
+index b622467..ef07785 100644
+--- a/src/pipeline/utilities/DetectionParser/DetectionParserUtils.cpp
++++ b/src/pipeline/utilities/DetectionParser/DetectionParserUtils.cpp
+@@ -20,7 +20,11 @@
+ #include <string>
+ #include <vector>
+ #if defined(DEPTHAI_HAVE_OPENCV_SUPPORT) && defined(DEPTHAI_XTENSOR_SUPPORT)
+-    #include <xtensor/core/xtensor_forward.hpp>
++    #if __has_include(<xtensor/core/xtensor_forward.hpp>)
++        #include <xtensor/core/xtensor_forward.hpp>
++    #else  // xtensor < 0.26
++        #include <xtensor/xtensor_forward.hpp>
++    #endif
+ #endif
+ 
+ #include "DetectionParserUtils.hpp"
+diff --git a/src/pipeline/utilities/Stitching/PlanarStitcher.cpp b/src/pipeline/utilities/Stitching/PlanarStitcher.cpp
+index b726c6b..25e41d0 100644
+--- a/src/pipeline/utilities/Stitching/PlanarStitcher.cpp
++++ b/src/pipeline/utilities/Stitching/PlanarStitcher.cpp
+@@ -4,6 +4,9 @@
+ #include <cmath>
+ #include <limits>
+ #include <opencv2/imgproc.hpp>
++#if __has_include(<opencv2/geometry.hpp>)  // OpenCV 5: minAreaRect, boundingRect, contourArea
++    #include <opencv2/geometry.hpp>
++#endif
+ #include <utility>
+ 
+ #include "StitchingCompositing.hpp"
+diff --git a/src/utility/ProtoSerialize.cpp b/src/utility/ProtoSerialize.cpp
+index a5ad611..f092c35 100644
+--- a/src/utility/ProtoSerialize.cpp
++++ b/src/utility/ProtoSerialize.cpp
+@@ -61,8 +61,9 @@ static std::string serializeFdSet(const google::protobuf::Descriptor* toplevelDe
+         next->CopyTo(fdSet.add_file());
+         for(int i = 0; i < next->dependency_count(); ++i) {
+             const auto& dep = next->dependency(i);
+-            if(seenDependencies.find(dep->name()) == seenDependencies.end()) {
+-                seenDependencies.insert(dep->name());
++            const std::string depName(dep->name());
++            if(seenDependencies.find(depName) == seenDependencies.end()) {
++                seenDependencies.insert(depName);
+                 toAdd.push(dep);
+             }
+         }
+diff --git a/src/utility/RecordReplay.cpp b/src/utility/RecordReplay.cpp
+index bac8a24..8ccb24f 100644
+--- a/src/utility/RecordReplay.cpp
++++ b/src/utility/RecordReplay.cpp
+@@ -25,7 +25,7 @@ namespace utility {
+ void fdSetInternal(google::protobuf::FileDescriptorSet& fd_set, std::unordered_set<std::string>& files, const google::protobuf::FileDescriptor* fd) {
+     for(int i = 0; i < fd->dependency_count(); ++i) {
+         const auto* dep = fd->dependency(i);
+-        auto [_, inserted] = files.insert(dep->name());
++        auto [_, inserted] = files.insert(std::string(dep->name()));
+         if(!inserted) continue;
+         fdSetInternal(fd_set, files, fd->dependency(i));
+     }
